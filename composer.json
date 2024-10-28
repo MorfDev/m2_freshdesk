@@ -1,6 +1,6 @@
 {
     "name": "morfdev/module-freshdesk",
-    "description": "N/A",
+    "description": "The extension connect Magento 2 stores with Freshworks products (Freshdesk/Freshsales/Freshservice/Freshchat) via Magento 2 Connector app",
     "type": "magento2-module",
     "version": "1.0.4",
     "license": [

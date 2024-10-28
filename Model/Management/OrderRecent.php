@@ -29,6 +29,7 @@ use Magento\Sales\Api\OrderAddressRepositoryInterface;
 use Magento\Sales\Model\ResourceModel\Order\CollectionFactory as OrderCollectionFactory;
 use Magento\Customer\Model\ResourceModel\Customer\CollectionFactory as CustomerCollectionFactory;
 use Magento\Directory\Model\CountryFactory;
+use Magento\Sales\Model\Order\StatusFactory;
 
 
 class OrderRecent implements OrderRecentManagementInterface
@@ -90,6 +91,9 @@ class OrderRecent implements OrderRecentManagementInterface
 	/** @var Config  */
 	protected $config;
 
+	/** @var StatusFactory  */
+	protected $orderStatusFactory;
+
 	/**
 	 * @param OrderRepositoryInterface $orderRepository
 	 * @param OrderItemRepositoryInterface $orderItemRepository
@@ -110,6 +114,7 @@ class OrderRecent implements OrderRecentManagementInterface
 	 * @param CustomerCollectionFactory $customerCollectionFactory
 	 * @param CountryFactory $countryFactory
 	 * @param Config $config
+	 * @param StatusFactory $orderStatusFactory
 	 */
     public function __construct(
         OrderRepositoryInterface $orderRepository,
@@ -130,7 +135,8 @@ class OrderRecent implements OrderRecentManagementInterface
         OrderAddressRepositoryInterface $addressRepository,
         CustomerCollectionFactory $customerCollectionFactory,
 		CountryFactory $countryFactory,
-		Config $config
+		Config $config,
+		StatusFactory $orderStatusFactory
     ) {
         $this->orderRepository = $orderRepository;
         $this->orderItemRepository = $orderItemRepository;
@@ -151,6 +157,7 @@ class OrderRecent implements OrderRecentManagementInterface
         $this->customerCollectionFactory = $customerCollectionFactory;
 		$this->countryFactory = $countryFactory;
 		$this->config = $config;
+		$this->orderStatusFactory = $orderStatusFactory;
     }
 
     /**
@@ -339,6 +346,7 @@ class OrderRecent implements OrderRecentManagementInterface
 					'phone' => $shippingAddress->getTelephone(),
 				];
 			}
+			$status = $this->orderStatusFactory->create()->load($order->getStatus());
             $orderInfo[] = [
                 'url' => $this->urlBuilder->getUrl('md_freshdesk/index/redirect',
                     ['id' => $order->getEntityId(), 'type' => RedirectType::ORDER_TYPE]),
@@ -354,7 +362,7 @@ class OrderRecent implements OrderRecentManagementInterface
                 'payment_method' => $order->getPayment()->getMethodInstance()->getTitle(),
                 'shipping_method' => $order->getShippingDescription(),
                 'shipping_tracking' => $this->prepareShippingTrackingForOrder($order),
-                'status' => $order->getStatusLabel(),
+                'status' => $status->getLabel(),
                 'state' => $order->getState(),
                 'totals' => [
                     'subtotal' => $isBaseCurrencyType ? $currency->toCurrency($order->getBaseSubtotal()) : $currency->toCurrency($order->getSubtotal()),
