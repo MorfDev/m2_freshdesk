@@ -2,7 +2,10 @@ This extension need to searching, preparing and seending information about custo
 
 **How to install the extension:**
 1) Download actual version of the extension
-2) Unpack it on your Magento 2 store
+2) Unpack it on your Magento 2 store in app/code/Magento/Freshdesk directory or use Composer:
+```
+composer require morfdev/module-freshdesk
+``` 
 3) Run following commands in console:
 ```
 bin/magento setup:upgrade
