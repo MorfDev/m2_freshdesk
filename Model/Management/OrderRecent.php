@@ -30,6 +30,8 @@ use Magento\Sales\Model\ResourceModel\Order\CollectionFactory as OrderCollection
 use Magento\Customer\Model\ResourceModel\Customer\CollectionFactory as CustomerCollectionFactory;
 use Magento\Directory\Model\CountryFactory;
 use Magento\Sales\Model\Order\StatusFactory;
+use Magento\Shipping\Helper\Data as ShippingHelper;
+use Magento\Sales\Model\Order;
 
 
 class OrderRecent implements OrderRecentManagementInterface
@@ -94,6 +96,9 @@ class OrderRecent implements OrderRecentManagementInterface
 	/** @var StatusFactory  */
 	protected $orderStatusFactory;
 
+	/** @var  ShippingHelper */
+	protected $shippingHelper;
+
 	/**
 	 * @param OrderRepositoryInterface $orderRepository
 	 * @param OrderItemRepositoryInterface $orderItemRepository
@@ -115,6 +120,7 @@ class OrderRecent implements OrderRecentManagementInterface
 	 * @param CountryFactory $countryFactory
 	 * @param Config $config
 	 * @param StatusFactory $orderStatusFactory
+	 * @param ShippingHelper $shippingHelper
 	 */
     public function __construct(
         OrderRepositoryInterface $orderRepository,
@@ -136,7 +142,8 @@ class OrderRecent implements OrderRecentManagementInterface
         CustomerCollectionFactory $customerCollectionFactory,
 		CountryFactory $countryFactory,
 		Config $config,
-		StatusFactory $orderStatusFactory
+		StatusFactory $orderStatusFactory,
+		ShippingHelper $shippingHelper
     ) {
         $this->orderRepository = $orderRepository;
         $this->orderItemRepository = $orderItemRepository;
@@ -158,6 +165,7 @@ class OrderRecent implements OrderRecentManagementInterface
 		$this->countryFactory = $countryFactory;
 		$this->config = $config;
 		$this->orderStatusFactory = $orderStatusFactory;
+		$this->shippingHelper = $shippingHelper;
     }
 
     /**
@@ -346,6 +354,13 @@ class OrderRecent implements OrderRecentManagementInterface
 					'phone' => $shippingAddress->getTelephone(),
 				];
 			}
+
+			$comments = $order->getStatusHistoryCollection()->getItems();
+			$commentList = [];
+			foreach ($comments as $comment) {
+				$commentList[] = ['comment' => $comment->getComment(), 'status' => $comment->getStatus(), 'created_at' => $this->localeDate->formatDateTime($comment->getCreatedAt(), \IntlDateFormatter::MEDIUM,
+					\IntlDateFormatter::SHORT)];
+			}
 			$status = $this->orderStatusFactory->create()->load($order->getStatus());
             $orderInfo[] = [
                 'url' => $this->urlBuilder->getUrl('md_freshdesk/index/redirect',
@@ -371,11 +386,79 @@ class OrderRecent implements OrderRecentManagementInterface
                     'tax' => $isBaseCurrencyType ? $currency->toCurrency($order->getBaseTaxAmount()) : $currency->toCurrency($order->getTaxAmount()),
                     'grand_total' => $isBaseCurrencyType ? $currency->toCurrency($order->getBaseGrandTotal()) : $currency->toCurrency($order->getGrandTotal())
                 ],
-                'items' => $orderItemInfo
+                'items' => $orderItemInfo,
+				'comment' => $commentList,
+				'history' => $this->getOrderHistory($order),
+				'track_url' => $this->shippingHelper->getTrackingPopupUrlBySalesModel($order)
             ];
         }
         return $orderInfo;
     }
+
+
+    private function getOrderHistory(Order $order) {
+		$history = [];
+		foreach ($order->getCreditmemosCollection() as $_memo) {
+			$history[] = $this->_prepareHistoryItem(
+				__('Credit memo #%1 created', $_memo->getIncrementId()),
+				$_memo->getEmailSent(),
+				new \DateTime($_memo->getCreatedAt())
+			);
+
+			foreach ($_memo->getCommentsCollection() as $_comment) {
+				$history[] = $this->_prepareHistoryItem(
+					__('Credit memo #%1 comment added', $_memo->getIncrementId()),
+					$_comment->getIsCustomerNotified(),
+					new \DateTime($_comment->getCreatedAt()),
+					$_comment->getComment()
+				);
+			}
+		}
+
+		foreach ($order->getShipmentsCollection() as $_shipment) {
+			$history[] = $this->_prepareHistoryItem(
+				__('Shipment #%1 created', $_shipment->getIncrementId()),
+				$_shipment->getEmailSent(),
+				new \DateTime($_shipment->getCreatedAt())
+			);
+
+			foreach ($_shipment->getCommentsCollection() as $_comment) {
+				$history[] = $this->_prepareHistoryItem(
+					__('Shipment #%1 comment added', $_shipment->getIncrementId()),
+					$_comment->getIsCustomerNotified(),
+					$_comment->getCreatedAt(),
+					new \DateTime($_comment->getCreatedAt())
+				);
+			}
+		}
+
+		foreach ($order->getInvoiceCollection() as $_invoice) {
+			$history[] = $this->_prepareHistoryItem(
+				__('Invoice #%1 created', $_invoice->getIncrementId()),
+				$_invoice->getEmailSent(),
+				new \DateTime($_invoice->getCreatedAt())
+			);
+
+			foreach ($_invoice->getCommentsCollection() as $_comment) {
+				$history[] = $this->_prepareHistoryItem(
+					__('Invoice #%1 comment added', $_invoice->getIncrementId()),
+					$_comment->getIsCustomerNotified(),
+					new \DateTime($_comment->getCreatedAt()),
+					$_comment->getComment()
+				);
+			}
+		}
+
+		foreach ($order->getTracksCollection() as $_track) {
+			$history[] = $this->_prepareHistoryItem(
+				__('Tracking number %1 for %2 assigned', $_track->getNumber(), $_track->getTitle()),
+				false,
+				new \DateTime($_track->getCreatedAt())
+			);
+		}
+		usort($history, [__CLASS__, 'sortHistoryByTimestamp']);
+		return $history;
+	}
 
     /**
      * @param OrderInterface $order
@@ -420,4 +503,22 @@ class OrderRecent implements OrderRecentManagementInterface
         }
         return $carrierCode;
     }
+
+	private static function sortHistoryByTimestamp($a, $b)
+	{
+		$createdAtA = $a['created_at'];
+		$createdAtB = $b['created_at'];
+
+		/** @var $createdAtA \DateTime */
+		if ($createdAtA->getTimestamp() == $createdAtB->getTimestamp()) {
+			return 0;
+		}
+		return $createdAtA->getTimestamp() < $createdAtB->getTimestamp() ? -1 : 1;
+	}
+
+	private function _prepareHistoryItem($label, $notified, $created, $comment = '')
+	{
+		return ['title' => $label, 'notified' => $notified, 'comment' => $comment, 'created_at' => $created, 'created_at_txt' => $this->localeDate->formatDateTime($created, \IntlDateFormatter::MEDIUM,
+			\IntlDateFormatter::SHORT)];
+	}
 }
