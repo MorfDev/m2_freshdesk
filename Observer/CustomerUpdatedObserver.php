@@ -7,6 +7,7 @@ use Magento\Customer\Api\AddressRepositoryInterface;
 use Magento\Customer\Model\Address\Config as AddressRenderer;
 use Magento\Customer\Model\Address\Mapper as AddressMapper;
 use Morfdev\Freshdesk\Model\Webhook;
+use Psr\Log\LoggerInterface;
 
 class CustomerUpdatedObserver implements ObserverInterface
 {
@@ -25,18 +26,24 @@ class CustomerUpdatedObserver implements ObserverInterface
 	/** @var  AddressMapper */
 	protected $addressMapper;
 
+	/** @var LoggerInterface  */
+	protected $logger;
+
 	/**
 	 * CustomerUpdatedObserver constructor.
 	 * @param CustomerRepositoryInterface $customerRepository
 	 * @param AddressRepositoryInterface $addressRepository
 	 * @param AddressRenderer $addressRenderer
 	 * @param AddressMapper $mapper
+	 * @param LoggerInterface $logger
+	 * @param Webhook $webhook
 	 */
 	public function __construct(
 		CustomerRepositoryInterface $customerRepository,
 		AddressRepositoryInterface $addressRepository,
 		AddressRenderer $addressRenderer,
 		AddressMapper $mapper,
+		LoggerInterface $logger,
 		Webhook $webhook
 	) {
 		$this->customerRepository = $customerRepository;
@@ -44,6 +51,7 @@ class CustomerUpdatedObserver implements ObserverInterface
 		$this->addressRenderer = $addressRenderer;
 		$this->addressMapper = $mapper;
 		$this->webhook = $webhook;
+		$this->logger = $logger;
 	}
 
     /**
@@ -64,8 +72,14 @@ class CustomerUpdatedObserver implements ObserverInterface
 
 		$addressRenderer = $this->addressRenderer->getFormatByCode('html')->getRenderer();
 		try {
-			$billingAddress = $this->addressRepository->getById($customer->getDefaultBilling());
+			if ($customer->getDefaultBilling()) {
+				$billingAddress = $this->addressRepository->getById($customer->getDefaultBilling());
+			} else {
+				$billingAddress = $customerAddress->getDataModel();
+			}
 			$billingAddressFormatted = $addressRenderer->renderArray($this->addressMapper->toFlatArray($billingAddress));
+			$phone = $billingAddress->getTelephone();
+			$company = $billingAddress->getCompany();
 			$address = [
 				'address_1' => $customerAddress->getStreetLine(1),
 				'address_2' => $customerAddress->getStreetLine(2),
@@ -75,12 +89,11 @@ class CustomerUpdatedObserver implements ObserverInterface
 				'postcode' => $customerAddress->getPostcode()
 
 			];
-			$phone = $billingAddress->getTelephone();
-			$company = $billingAddress->getCompany();
 		} catch (\Exception $e) {
-			$billingAddressFormatted = null;
-			$phone = null;
-			$company = null;
+			$this->logger->error($e->getMessage());
+			$billingAddressFormatted = '';
+			$phone = '';
+			$company = '';
 			$address = [];
 		}
 

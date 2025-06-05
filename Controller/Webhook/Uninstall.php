@@ -93,7 +93,7 @@ class Uninstall extends Action
 			if (null === $postData || !isset($postData['type'])) {
 				throw new \Exception("Error on install webhook");
 			}
-			$this->resourceConfig->saveConfig('morfdev_freshdesk/general/'. $postData['type'] .'destination_url', '', 'default', 0);
+			$this->resourceConfig->saveConfig('morfdev_freshdesk/general/'. $postData['type'] .'_destination_url', '', 'default', 0);
         } catch (\Exception $e) {
             $resultJson->setHttpResponseCode(500);
             return $resultJson->setData([

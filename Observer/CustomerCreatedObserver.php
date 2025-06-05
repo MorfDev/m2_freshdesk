@@ -70,9 +70,9 @@ class CustomerCreatedObserver implements ObserverInterface
 			$phone = $billingAddress->getTelephone();
 			$company = $billingAddress->getCompany();
 		} catch (\Exception $e) {
-			$billingAddressFormatted = null;
-			$phone = null;
-			$company = null;
+			$billingAddressFormatted = '';
+			$phone = '';
+			$company = '';
 			$address = [];
 		}
 
@@ -86,6 +86,9 @@ class CustomerCreatedObserver implements ObserverInterface
 			'address' => $address,
 			'company' => $company
 		];
+		$this->webhook->sendData($data);
+
+		$data['scope'] = "ticket.created";
 		$this->webhook->sendData($data);
 	}
 }
