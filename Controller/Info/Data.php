@@ -109,7 +109,7 @@ class Data extends Action
         /** @var \Magento\Framework\Controller\Result\Json $resultJson */
         $resultJson = $this->resultFactory->create(ResultFactory::TYPE_JSON);
 
-        if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+        if ($this->getRequest()->getMethod() === 'OPTIONS') {
             //CORS Preflight
             return $resultJson->setData([
                 'order_list' => [],
@@ -134,10 +134,10 @@ class Data extends Action
                 $data['customer_list'] = $customerInfo;
             }
         } catch (\Exception $e) {
+            $this->logger->error($e->getMessage());
             $resultJson->setHttpResponseCode(500);
             return $resultJson->setData([
-                'message' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
+                'message' => $e->getMessage()
             ]);
         }
 

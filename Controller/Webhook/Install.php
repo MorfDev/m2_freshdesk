@@ -95,10 +95,10 @@ class Install extends Action
 			}
 			$this->resourceConfig->saveConfig('morfdev_freshdesk/general/'. $postData['type'] . '_destination_url', $postData['delivery_url'], 'default', 0);
         } catch (\Exception $e) {
+            $this->logger->error($e->getMessage());
             $resultJson->setHttpResponseCode(500);
             return $resultJson->setData([
-                'message' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
+                'message' => $e->getMessage()
             ]);
         }
         return $resultJson->setData([]);
