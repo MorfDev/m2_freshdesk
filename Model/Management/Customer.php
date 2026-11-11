@@ -255,24 +255,165 @@ class Customer implements CustomerManagementInterface
                 $customer = $this->customerRepository->getById($customerId);
                 return $this->getInfo($customer->getEmail(), $scope);
             }
+
             $billingAddress = $order->getBillingAddress();
-            if (null === $billingAddress) {
-                return $this->getInfo($order->getCustomerEmail(), $scope);
+            $email = $billingAddress ? $billingAddress->getEmail() : $order->getCustomerEmail();
+            if ($email) {
+                $registeredCustomer = $this->getInfo($email, $scope);
+                if ($registeredCustomer) {
+                    return $registeredCustomer;
+                }
             }
-            try {
-                $country = $this->countryFactory->create();
-                $country->getResource()->load($country, $billingAddress->getCountryId());
-                $countryName = $country->getName();
-            } catch (\Exception $e) {
-                $countryName = '';
-            }
-            $customerInfo[] = [
-                'name' => $billingAddress->getFirstname() . ' ' . $billingAddress->getLastname(),
-                'email' => $billingAddress->getEmail(),
-                'group' => self::GUEST_GROUP_LABEL,
-                'country' => $countryName
-            ];
+
+            $customerInfo[] = $this->buildGuestInfo($order, $billingAddress);
         }
         return $customerInfo;
+    }
+
+    /**
+     * Build a customer-like record for an order placed without a customer account.
+     *
+     * @param \Magento\Sales\Api\Data\OrderInterface $order
+     * @param \Magento\Sales\Api\Data\OrderAddressInterface|null $billingAddress
+     * @return array
+     * @throws \Magento\Framework\Exception\LocalizedException
+     * @throws \Zend_Currency_Exception
+     */
+    private function buildGuestInfo($order, $billingAddress)
+    {
+        $store = $this->storeManager->getStore($order->getStoreId());
+        $website = $this->storeManager->getWebsite($store->getWebsiteId());
+
+        $firstname = $billingAddress ? $billingAddress->getFirstname() : $order->getCustomerFirstname();
+        $lastname = $billingAddress ? $billingAddress->getLastname() : $order->getCustomerLastname();
+        $email = $billingAddress ? $billingAddress->getEmail() : $order->getCustomerEmail();
+        $telephone = $billingAddress ? $billingAddress->getTelephone() : '';
+        $company = $billingAddress ? $billingAddress->getCompany() : '';
+        $city = $billingAddress ? $billingAddress->getCity() : '';
+        $region = $billingAddress ? $billingAddress->getRegion() : '';
+        $postcode = $billingAddress ? $billingAddress->getPostcode() : '';
+        $countryName = $this->getCountryName($billingAddress ? $billingAddress->getCountryId() : '');
+        $streetLines = $this->getStreetLines($billingAddress);
+
+        $firstname = $firstname ? $firstname : '';
+        $lastname = $lastname ? $lastname : '';
+        $email = $email ? $email : '';
+        $telephone = $telephone ? $telephone : '';
+        $company = $company ? $company : '';
+        $city = $city ? $city : '';
+        $region = $region ? $region : '';
+        $postcode = $postcode ? $postcode : '';
+
+        $meta = [
+            'firstname' => $firstname,
+            'lastname' => $lastname,
+            'country' => $countryName,
+            'work_number' => $telephone,
+            'address' => implode(' ', $streetLines),
+            'city' => $city,
+            'state' => $region,
+            'zipcode' => $postcode,
+            'job_title' => $company
+        ];
+
+        $currency = $this->currency->getCurrency($website->getBaseCurrencyCode());
+        $totalSales = $currency->toCurrency((float)$order->getBaseGrandTotal());
+
+        return [
+            'url' => '',
+            'customer_id' => null,
+            'name' => trim($firstname . ' ' . $lastname),
+            'email' => $email,
+            'website_id' => $website->getId(),
+            'website_name' => $website->getName(),
+            'group' => self::GUEST_GROUP_LABEL,
+            'country' => $countryName,
+            'total_sales' => $totalSales,
+            'created_at' => $order->getCreatedAt()
+                ? $this->localeDate->formatDateTime(
+                    $order->getCreatedAt(),
+                    \IntlDateFormatter::MEDIUM,
+                    \IntlDateFormatter::NONE
+                )
+                : '',
+            'billing_address' => $this->formatOrderAddress($billingAddress),
+            'shipping_address' => $this->formatOrderAddress($order->getShippingAddress()),
+            'meta' => $meta,
+            'is_guest' => true
+        ];
+    }
+
+    /**
+     * @param \Magento\Sales\Api\Data\OrderAddressInterface|null $address
+     * @return string
+     */
+    private function formatOrderAddress($address)
+    {
+        if (!$address) {
+            return '';
+        }
+
+        $parts = [];
+        $name = trim($address->getFirstname() . ' ' . $address->getLastname());
+        if ($name) {
+            $parts[] = $name;
+        }
+        if ($address->getCompany()) {
+            $parts[] = $address->getCompany();
+        }
+        foreach ($this->getStreetLines($address) as $streetLine) {
+            $parts[] = $streetLine;
+        }
+
+        $cityLine = trim($address->getCity() . ' ' . $address->getRegion() . ' ' . $address->getPostcode());
+        if ($cityLine) {
+            $parts[] = $cityLine;
+        }
+        $countryName = $this->getCountryName($address->getCountryId());
+        if ($countryName) {
+            $parts[] = $countryName;
+        }
+        if ($address->getTelephone()) {
+            $parts[] = $address->getTelephone();
+        }
+
+        return implode(', ', $parts);
+    }
+
+    /**
+     * @param \Magento\Sales\Api\Data\OrderAddressInterface|null $address
+     * @return array
+     */
+    private function getStreetLines($address)
+    {
+        if (!$address) {
+            return [];
+        }
+
+        $street = $address->getStreet();
+        if (is_array($street)) {
+            return array_values(array_filter($street));
+        }
+
+        return $street ? [$street] : [];
+    }
+
+    /**
+     * @param string $countryId
+     * @return string
+     */
+    private function getCountryName($countryId)
+    {
+        if (!$countryId) {
+            return '';
+        }
+
+        try {
+            $country = $this->countryFactory->create();
+            $country->getResource()->load($country, $countryId);
+            return $country->getName();
+        } catch (\Exception $e) {
+            return '';
+        }
     }
 }
